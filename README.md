@@ -33,3 +33,91 @@ go-zero 是一个集成了各种工程实践的web和rpc框架，通过弹性设
 3. protoc (转rpc代码 环境准备中有准备好的压缩包  解压放在go/bin目录下就行了)
 4. goctl (https://zhuanlan.zhihu.com/p/624597859)
 
+## etcd
+（理解为加强版的redis 但是它只能存字符串）
+Etcd 是一个高可用的分布式的kv存储系统，主要用于共享配置信息和服务发现。它采用 Raft 一致性算法来保证数据的强一致性，并且支持对数据进行监视和更新
+
+#### 为什么要用 etcd ？
+主要是用于微服务的配置中心，服务发现
+
+至于为什么不用redis，是因为etcd的数据可靠性更强
+
+[windows 安装](https://github.com/etcd-io/etcd/releases)
+
+[linux 安装](blog.csdn.net)
+
+```shell
+# docker 安装
+
+docker run --name etcd -d -p 2379:2379 -p 2380:2380 -e ALLOW_NONE_AUTHENTICATION=yes bitnami/etcd:3.3.11 etcd
+```
+docker 安装
+
+![img.png](img文件/etcduse.png)
+
+在对外api这个应用里面，怎么知道 order 服务的 rpc 地址呢？
+
+写在配置文件里的话，那么服务的 ip 地址变化后就需要应用程序重启才能解决
+
+![img.png](img文件/etcduse2.png)
+
+如果用了etcd就是这样的，先去获取后端服务的一个监听地址，然后才会发送消息到对应的rpc服务上面去
+
+```
+# etcd 基本命令
+
+# 设置或者更新值
+etcdctl put name 洲洲
+# 获取值
+etcdctl get name
+# 只要value
+etcdctl get name --print-value-only
+# 获取name前缀的键值对
+etcdctl get --prefix name
+# 删除键值对
+etcdctl del name
+# 监听键的变化
+etcdctl watch name
+
+```
+[etcd指令](https://www.jianshu.com/p/67cbef492812)
+
+## 最简单的微服务demo
+这个demo是一个用户微服务，一个视频微服务
+
+视频微服务需要提供一个http接口，用户查询一个视频的信息，并且把关联用户id的用户名也查出来
+
+那么用户微服务需要提供一个方法，需要根据用户id返回用户信息
+
+#### 用户微服务
+
+1. 编写rpc的proto文件
+```protobuf
+// user/rpc/user.proto
+syntax = "proto3";
+
+package user;
+
+option go_package = "./user";
+
+message IdRequest {
+  string id = 1;
+}
+
+message UserResponse {
+  // id
+  string id = 1;
+  // name
+  string name = 2;
+  // sex
+  bool gender = 3;
+}
+
+service User {
+  rpc getUser(IdRequest) returns (UserResponse);
+}
+
+// goctl rpc protoc user/rpc/user.proto --go_out=user/rpc/types --go-grpc_out=user/rpc/types --zrpc_out=user/rpc/
+// 记得 这里用的是相对路径，如果在user目录下对应的路径就要记得修改
+```
+
