@@ -121,3 +121,110 @@ service User {
 // 记得 这里用的是相对路径，如果在user目录下对应的路径就要记得修改
 ```
 
+接口调用用的是APIfox 这个可以直接导入proto直接实现接口的自动调用   特别好用
+
+2. 编写api
+```api
+type (
+    VideoReq {
+        Id string `path:"id"`
+    }
+
+    VideoRes {
+        Id      string `json:"id"`
+        Name    string `json:"name"`
+    }
+)
+
+service video {
+    @handler getVideo
+    get /api/videos/:id (VideoReq) returns (VideoRes)
+}
+
+// goctl api go -api video/api/video.api -dir video/api/
+```
+
+3. 添加 user rpc 配置
+
+因为要在 video 里面调用 user 的 rpc 服务
+
+video/api/internal/config/config.go
+```go
+package config
+
+import (
+	"github.com/zeromicro/go-zero/rest"
+	"github.com/zeromicro/go-zero/zrpc"
+)
+
+type Config struct {
+	rest.RestConf
+	UserRpc zrpc.RpcClientConf
+}
+```
+
+4. 完善服务依赖
+
+video/api/internal/svc/servicecontext.go
+```go
+package svc
+
+import (
+	"api/internal/config"
+	"github.com/zeromicro/go-zero/zrpc"
+	"zerostudyone/user/rpc/userclient"
+)
+
+type ServiceContext struct {
+	Config config.Config
+	UserRpc userclient.User
+}
+
+func NewServiceContext(c config.Config) *ServiceContext {
+	return &ServiceContext{
+		Config: c,
+		UserRpc: userclient.NewUser(zrpc.MustNewClient(c.UserRpc)),
+	}
+}
+```
+如果遇到引用问题  可以用 go mod replace 的方法
+
+```go
+replace zerostudyone/user/rpc => E:\zhoulearn\gozerolearn\learnstart\zerostudyone\user\rpc
+```
+
+5. 添加yaml配置
+
+video/api/etc/video.yaml
+
+```yaml
+Name: video
+Host: 0.0.0.0
+Port: 8888
+UserRpc:
+  Ercd:
+    Hosts:
+      - 127.0.0.1:2379
+    Key: user.rpc
+```
+
+6. 完善服务依赖
+
+video/api/internal/logic/getvideologic.go
+```go
+func (l *GetVideoLogic) GetVideo(req *types.VideoReq) (resp *types.VideoRes, err error) {
+// todo: add your logic here and delete this line
+    user1, err := l.svcCtx.UserRpc.GetUser(l.ctx, &user.IdRequest{
+        Id: "1",
+    })
+    if err != nil {
+        return nil, err
+    }
+
+    return &types.VideoRes{
+        Id: req.Id,
+        Name: user1.GetName(),
+    }, nil
+}
+```
+
